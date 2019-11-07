@@ -1,3 +1,108 @@
-<!-- libs -->
-<script src=".../Box2D.js"></script>
-<script src=".../pixi.dev.js"></script>
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>Test</title>
+  <link rel="stylesheet" href="./style.css">
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<script type="text/js-worker">
+
+	const stack = [];
+	let oldTheta = 0;
+	let oldPoint = null
+
+	function plot(theta,symmetry,iterations,radiusA,radiusB,a,b,d) {
+		const phi = symmetry * Math.PI;
+		let i = iterations;
+		let x = 0;
+		let y = 0;
+		do {
+			const value = (i * theta) - (i * i * phi);
+			x += ( Math.sin(a * value + d) / i ) * radiusA;
+			y += ( Math.sin(b * value) / i ) * radiusB;
+		} while (--i);
+		return [x,y];
+	}
+
+	function acceptable(a,b,distanceThreshold,c,d,thetaThreshold) {
+		return (Math.abs(c-d) < thetaThreshold && (Math.abs(a[0]-b[0]) < distanceThreshold && Math.abs(a[1]-b[1]) < distanceThreshold) );
+	}
+
+	function update(symmetry,iterations,radiusA,radiusB,a,b,d,thetaThreshold,distanceThreshold) {
+		const result = []
+		let item = stack[stack.length-1];
+		let nextPoint = item.point;
+		let nextTheta = item.theta;
+		while (true) {
+			nextTheta = (nextTheta - oldTheta) / 2 + oldTheta;
+			nextPoint = plot(nextTheta,symmetry,iterations,radiusA,radiusB,a,b,d);
+			stack.push({ point:nextPoint, theta: nextTheta });
+			if (acceptable(oldPoint,nextPoint,distanceThreshold,oldTheta,nextTheta,thetaThreshold)) break;
+		}
+		result.push(oldPoint[0]);
+		result.push(oldPoint[1]);
+		while (stack.length) {
+			item = stack[stack.length-1];
+			nextPoint = item.point;
+			nextTheta = item.theta;
+			if (!acceptable(oldPoint,nextPoint,distanceThreshold,oldTheta,nextTheta,thetaThreshold)) break;
+			else {
+				result.push(nextPoint[0]);
+				result.push(nextPoint[1]);
+				oldPoint = nextPoint;
+				oldTheta = nextTheta;
+				stack.length = stack.length-1;
+			}
+		}
+		return result;
+	}
+
+	self.addEventListener("message", function(e) {
+		const symmetry = e.data[0];
+		const iterations = e.data[1];
+		const radiusA = e.data[2];
+		const radiusB = e.data[3];
+		const a = e.data[4];
+		const b = e.data[5];
+		const d = e.data[6];
+		const thetaThreshold = e.data[7];
+		const distanceThreshold = e.data[8];
+		const start = e.data[9];
+		const end = e.data[10];
+		const index = e.data[11];
+		const span = end - start;
+		const tau = Math.PI * 2;
+		const ratio = span / tau;
+		const total = Math.round(tau / thetaThreshold);
+		const vertices = Math.round(total * ratio);
+		const slice = span / vertices;
+		if (!distanceThreshold || distanceThreshold < 0.0) {
+			const result = [];
+			for (let i=0; i<vertices; i++) {
+				const theta = start + i * slice;
+				const point = plot(theta,symmetry,iterations,radiusA,radiusB,a,b,d);
+				result.push(point[0]);
+				result.push(point[1]);
+			}
+			self.postMessage(result);
+		} else {
+			if (!stack.length) {
+				oldPoint = plot(start,symmetry,iterations,radiusA,radiusB,a,b,d);
+				oldTheta = start;
+				const endPoint = plot(end,symmetry,iterations,radiusA,radiusB,a,b,d);
+				stack.push({ point:endPoint, theta: end });
+			}
+			const result = update(symmetry,iterations,radiusA,radiusB,a,b,d,thetaThreshold,distanceThreshold,start,end);
+			self.postMessage(result);
+		}
+	}, false);
+
+</script>
+<!-- partial -->
+  <script src='https://cdn.rawgit.com/KevinDoughty/hyperact/b04d656257d0e0b90cb54f174d506d9d5c178a25/hyperact.js'></script><script  src="./script.js"></script>
+
+</body>
+</html>
